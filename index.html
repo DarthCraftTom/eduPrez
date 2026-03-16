@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Educanet - TV Prezentace</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Nastavení vlastních barev Educanet do Tailwindu -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        eduNavy: '#0c142e',   /* Tmavě modrá z loga */
+                        eduOrange: '#f26d21', /* Oranžová z loga */
+                        eduYellow: '#ffc107', /* Žlutá z loga */
+                        eduTeal: '#17a2b8',   /* Tyrkysová z loga */
+                    },
+                    fontFamily: {
+                        sans: ['Montserrat', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800;900&display=swap" rel="stylesheet">
+    <!-- FontAwesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        body {
+            margin: 0;
+            background-color: #0c142e;
+            color: #ffffff;
+            overflow: hidden;
+            font-family: 'Montserrat', sans-serif;
+            transition: cursor 0.3s ease;
+        }
+
+        /* Třída pro nečinnost - skryje kurzor */
+        body.idle {
+            cursor: none;
+        }
+
+        /* Otevřený, plynulý scroll kontejner */
+        .slides-container {
+            height: 100vh;
+            overflow-y: scroll;
+            scroll-snap-type: y mandatory;
+            scroll-behavior: smooth;
+            scrollbar-width: none;
+        }
+        .slides-container::-webkit-scrollbar { display: none; }
+
+        .slide {
+            height: 100vh;
+            width: 100vw;
+            scroll-snap-align: start;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            padding: 3rem;
+            padding-bottom: 7rem; /* Místo dole kvůli navigaci */
+            padding-left: 5rem; /* Ochrana proti logu vlevo dole */
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        /* Dynamické organické tvary na pozadí (Blobs) */
+        .blob {
+            position: absolute;
+            filter: blur(80px);
+            z-index: 0;
+            opacity: 0.35;
+            animation: float 20s infinite ease-in-out alternate;
+        }
+        .blob-orange { background: #f26d21; width: 50vw; height: 50vw; border-radius: 40% 60% 70% 30%; top: -10%; left: -10%; }
+        .blob-teal { background: #17a2b8; width: 40vw; height: 40vw; border-radius: 60% 40% 30% 70%; bottom: -10%; right: -10%; animation-delay: -5s; }
+        .blob-yellow { background: #ffc107; width: 30vw; height: 30vw; border-radius: 50%; top: 40%; left: 60%; animation-delay: -10s; opacity: 0.2; }
+
+        @keyframes float {
+            0% { transform: translate(0, 0) rotate(0deg) scale(1); }
+            100% { transform: translate(10vw, 10vh) rotate(20deg) scale(1.1); }
+        }
+
+        /* Vše na slajdech musí být nad bloby */
+        .content-wrapper {
+            z-index: 10;
+            width: 100%;
+            max-width: 1500px;
+        }
+
+        /* Animace textů */
+        .reveal-up {
+            opacity: 0;
+            transform: translateY(60px);
+            transition: opacity 1s cubic-bezier(0.25, 1, 0.5, 1), transform 1s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+        .reveal-scale {
+            opacity: 0;
+            transform: scale(0.8);
+            transition: opacity 1.2s cubic-bezier(0.25, 1, 0.5, 1), transform 1.2s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+        .slide.active .reveal-up { opacity: 1; transform: translateY(0); }
+        .slide.active .reveal-scale { opacity: 1; transform: scale(1); }
+
+        .delay-100 { transition-delay: 100ms; }
+        .delay-200 { transition-delay: 200ms; }
+        .delay-300 { transition-delay: 300ms; }
+
+        /* Obří typografie pro TV */
+        .tv-title { font-size: clamp(3.5rem, 5.5vw, 8rem); line-height: 1.1; font-weight: 900; letter-spacing: -0.02em; }
+        .tv-subtitle { font-size: clamp(1.8rem, 3vw, 3.5rem); line-height: 1.3; font-weight: 600; opacity: 0.9; }
+        .tv-text { font-size: clamp(1.2rem, 1.8vw, 2.2rem); line-height: 1.5; font-weight: 500; opacity: 0.9; }
+        
+        /* Highlight barvy v textu */
+        .text-orange { color: #f26d21; }
+        .text-yellow { color: #ffc107; }
+        .text-teal { color: #17a2b8; }
+
+        /* Navigace dole - posunuto níže */
+        .bottom-nav {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 25px;
+            z-index: 100;
+            background: rgba(12, 20, 46, 0.85);
+            backdrop-filter: blur(15px);
+            padding: 12px 35px;
+            border-radius: 50px;
+            border: 1px solid rgba(255,255,255,0.15);
+            transition: opacity 0.8s ease; /* Plynulé mizení */
+        }
+
+        /* Třída pro nečinnost - skryje navigaci */
+        body.idle .bottom-nav {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background-color: rgba(255,255,255,0.2);
+            cursor: pointer;
+            transition: all 0.4s ease;
+        }
+
+        .dot.active {
+            background-color: #ffc107;
+            transform: scale(1.5);
+            box-shadow: 0 0 15px rgba(255, 193, 7, 0.6);
+        }
+
+        .scroll-icon {
+            color: #ffffff;
+            font-size: 22px;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+        .scroll-icon:hover { transform: translateY(3px); color: #17a2b8; }
+
+        /* Kontejnery pro grafy */
+        .chart-container {
+            position: relative;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+        }
+        
+        /* Globální pevné logo vlevo dole */
+        .global-logo {
+            position: fixed;
+            bottom: 30px;
+            left: 30px;
+            height: 60px;
+            z-index: 200;
+            object-fit: contain;
+            opacity: 0.9;
+            pointer-events: none; /* Kliknutí propadnou skrz (neruší uživatele) */
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Globální Blobs na pozadí -->
+    <div class="blob blob-orange"></div>
+    <div class="blob blob-teal"></div>
+    <div class="blob blob-yellow"></div>
+
+    <!-- GLOBÁLNÍ LOGO VLEVO DOLE (Stále viditelné, nemizí při nečinnosti) -->
+    <img src="educanet.png" alt="Educanet Logo" class="global-logo">
+
+    <!-- Ovládání dole -->
+    <div class="bottom-nav">
+        <i class="fas fa-chevron-up scroll-icon" onclick="scrollPrev()"></i>
+        <div id="navDots" class="flex gap-3 items-center mx-4"></div>
+        <i class="fas fa-chevron-down scroll-icon" onclick="scrollNext()"></i>
+    </div>
+
+    <div class="slides-container" id="slidesContainer">
+        
+        <!-- Slide 0: Úvod s logem -->
+        <section class="slide" id="slide-0">
+            <div class="content-wrapper text-center">
+                <!-- Středové velké logo na prvním slajdu -->
+                <img src="educanet.png" alt="Educanet Logo" class="h-40 md:h-60 mx-auto mb-10 reveal-scale object-contain">
+
+                <h1 class="tv-title mb-8 reveal-up delay-100">Střední škola, <br>která dává <span class="text-yellow">smysl.</span></h1>
+                <p class="tv-subtitle reveal-up delay-200">Moderní přístup. Reálná praxe. Tvoje budoucnost.</p>
+            </div>
+        </section>
+
+        <!-- Slide 1: Obory budoucnosti -->
+        <section class="slide" id="slide-1">
+            <div class="content-wrapper text-center">
+                <h2 class="tv-title mb-12 reveal-up">Obory <span class="text-yellow">budoucnosti.</span></h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-10 max-w-7xl mx-auto pl-8">
+                    <div class="bg-white/5 p-10 rounded-3xl border border-white/10 reveal-up delay-100 shadow-[0_0_30px_rgba(23,162,184,0.1)]">
+                        <i class="fas fa-laptop-code text-eduTeal text-7xl mb-6"></i>
+                        <h3 class="tv-subtitle mb-6 text-white">Informační technologie</h3>
+                        <ul class="space-y-4 text-left">
+                            <li class="flex items-start gap-4">
+                                <i class="fas fa-check text-eduTeal text-3xl mt-1"></i>
+                                <p class="tv-text m-0">Programování, sítě a kyberbezpečnost.</p>
+                            </li>
+                            <li class="flex items-start gap-4">
+                                <i class="fas fa-check text-eduTeal text-3xl mt-1"></i>
+                                <p class="tv-text m-0">Aktivní práce s nejnovějšími technologiemi.</p>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="bg-white/5 p-10 rounded-3xl border border-white/10 reveal-up delay-200 shadow-[0_0_30px_rgba(242,109,33,0.1)]">
+                        <i class="fas fa-chart-pie text-eduOrange text-7xl mb-6"></i>
+                        <h3 class="tv-subtitle mb-6 text-white">Ekonomické lyceum</h3>
+                        <ul class="space-y-4 text-left">
+                            <li class="flex items-start gap-4">
+                                <i class="fas fa-check text-eduOrange text-3xl mt-1"></i>
+                                <p class="tv-text m-0">Ekonomie, marketing a moderní management.</p>
+                            </li>
+                            <li class="flex items-start gap-4">
+                                <i class="fas fa-check text-eduOrange text-3xl mt-1"></i>
+                                <p class="tv-text m-0">Skvělá příprava na vlastní byznys i vysokou školu.</p>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 2: BYOD (Odrážky) -->
+        <section class="slide" id="slide-2">
+            <div class="content-wrapper flex flex-col lg:flex-row items-center gap-12 pl-8">
+                <div class="w-full lg:w-1/2 reveal-up">
+                    <h2 class="tv-title mb-8">Zahoďte <br><span class="text-orange">sešity.</span></h2>
+                    
+                    <ul class="space-y-6 mt-10">
+                        <li class="flex items-start gap-5">
+                            <i class="fas fa-laptop-code text-eduOrange text-5xl mt-1"></i>
+                            <p class="tv-text m-0">Systém <strong>BYOD</strong> (Práce na vlastním notebooku).</p>
+                        </li>
+                        <li class="flex items-start gap-5">
+                            <i class="fas fa-ban text-red-500 text-5xl mt-1"></i>
+                            <p class="tv-text m-0">Žádné sdílené a zastaralé počítačové učebny.</p>
+                        </li>
+                        <li class="flex items-start gap-5">
+                            <i class="fas fa-home text-eduTeal text-5xl mt-1"></i>
+                            <p class="tv-text m-0">Vše tvoříte ve svém vlastním, známém prostředí.</p>
+                        </li>
+                    </ul>
+                </div>
+                <div class="w-full lg:w-1/2 flex justify-center reveal-scale delay-200">
+                    <i class="fas fa-laptop text-[12rem] md:text-[20rem] text-eduOrange opacity-90 drop-shadow-2xl"></i>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 3: Učitelé z praxe (Odrážky) -->
+        <section class="slide" id="slide-3">
+            <div class="content-wrapper text-center">
+                <i class="fas fa-user-tie text-[6rem] md:text-[8rem] text-eduTeal mb-8 reveal-scale"></i>
+                <h2 class="tv-title mb-10 reveal-up delay-100">Teorie je fajn.<br><span class="text-teal">Praxe je lepší.</span></h2>
+                
+                <ul class="space-y-6 text-left max-w-5xl mx-auto pl-8 pr-8 reveal-up delay-200">
+                    <li class="flex items-center gap-6 bg-white/5 p-5 rounded-2xl border border-white/10">
+                        <i class="fas fa-briefcase text-eduTeal text-4xl"></i>
+                        <p class="tv-text m-0">Odborné předměty vyučují profesionálové přímo z firem.</p>
+                    </li>
+                    <li class="flex items-center gap-6 bg-white/5 p-5 rounded-2xl border border-white/10">
+                        <i class="fas fa-chart-line text-eduYellow text-4xl"></i>
+                        <p class="tv-text m-0">Získáte aktuální a nezkreslené vědomosti z trhu.</p>
+                    </li>
+                    <li class="flex items-center gap-6 bg-white/5 p-5 rounded-2xl border border-white/10">
+                        <i class="fas fa-rocket text-eduOrange text-4xl"></i>
+                        <p class="tv-text m-0">Učíme moderně a vysoko nad rámec běžné střední školy.</p>
+                    </li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Slide 4: Úspěchy v soutěžích (Hackathon) -->
+        <section class="slide" id="slide-4">
+            <div class="content-wrapper flex flex-col lg:flex-row items-center gap-12 pl-8">
+                <div class="w-full lg:w-1/2 reveal-up">
+                    <h2 class="tv-title mb-6">Aktivní v <br><span class="text-yellow">soutěžích.</span></h2>
+                    
+                    <ul class="space-y-6 mt-8">
+                        <li class="flex items-start gap-5">
+                            <i class="fas fa-trophy text-eduYellow text-5xl mt-1"></i>
+                            <p class="tv-text m-0">Studenti IT oboru se úspěšně účastní prestižních soutěží.</p>
+                        </li>
+                        <li class="flex items-start gap-5">
+                            <i class="fas fa-medal text-eduOrange text-5xl mt-1"></i>
+                            <p class="tv-text m-0">Nedávno naši žáci zazářili na celostátním <strong>Hackathonu</strong>.</p>
+                        </li>
+                        <li class="flex items-start gap-5">
+                            <i class="fas fa-lightbulb text-eduTeal text-5xl mt-1"></i>
+                            <p class="tv-text m-0">Motivujeme k inovativnímu myšlení na reálných projektech.</p>
+                        </li>
+                    </ul>
+                </div>
+                <div class="w-full lg:w-1/2 flex justify-center reveal-scale delay-200">
+                    <div class="relative">
+                        <i class="fas fa-award text-[12rem] md:text-[18rem] text-eduYellow opacity-90 drop-shadow-2xl"></i>
+                        <i class="fas fa-star text-5xl text-eduOrange absolute top-5 right-0 animate-bounce"></i>
+                        <i class="fas fa-star text-4xl text-eduTeal absolute bottom-10 left-0 animate-pulse"></i>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 5: Inovace a vybavení -->
+        <section class="slide" id="slide-5">
+            <div class="content-wrapper flex flex-col lg:flex-row items-center justify-between gap-12 pl-8">
+                <div class="w-full lg:w-1/2 order-2 lg:order-1 flex justify-center reveal-scale delay-100">
+                    <div class="grid grid-cols-2 gap-8">
+                        <i class="fas fa-microchip text-[8rem] text-eduYellow opacity-80"></i>
+                        <i class="fas fa-couch text-[8rem] text-eduOrange opacity-80 mt-12"></i>
+                    </div>
+                </div>
+                <div class="w-full lg:w-1/2 order-1 lg:order-2 reveal-up">
+                    <h2 class="tv-title mb-8">Neustále <span class="text-teal">inovujeme.</span></h2>
+                    
+                    <ul class="space-y-8 mt-8">
+                        <li class="flex items-start gap-5">
+                            <i class="fas fa-arrow-right text-eduTeal text-4xl mt-2"></i>
+                            <div>
+                                <h3 class="tv-subtitle mb-1">Moderní ŠVP</h3>
+                                <p class="tv-text m-0 text-gray-300">Osnovy rychle reagující na aktuální trendy doby.</p>
+                            </div>
+                        </li>
+                        <li class="flex items-start gap-5">
+                            <i class="fas fa-arrow-right text-eduTeal text-4xl mt-2"></i>
+                            <div>
+                                <h3 class="tv-subtitle mb-1">Špičkový hardware</h3>
+                                <p class="tv-text m-0 text-gray-300">Aktivně investujeme do nových komponent.</p>
+                            </div>
+                        </li>
+                        <li class="flex items-start gap-5">
+                            <i class="fas fa-arrow-right text-eduTeal text-4xl mt-2"></i>
+                            <div>
+                                <h3 class="tv-subtitle mb-1">Chill zóny</h3>
+                                <p class="tv-text m-0 text-gray-300">Nové sedačky a prémiové prostory pro relaxaci.</p>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 6: Menší škola, lepší vztahy -->
+        <section class="slide" id="slide-6">
+            <div class="content-wrapper text-center">
+                <h2 class="tv-title mb-10 reveal-up">Nejste jen číslo <br>v <span class="text-orange">seznamu.</span></h2>
+                
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-7xl mx-auto mt-8 pl-8">
+                    <div class="text-left reveal-up delay-100 bg-white/5 p-8 rounded-3xl border border-white/10">
+                        <i class="fas fa-users text-6xl text-eduTeal mb-6"></i>
+                        <h3 class="tv-subtitle mb-6 text-yellow">Menší kolektiv</h3>
+                        <ul class="space-y-4">
+                            <li class="flex items-start gap-4">
+                                <i class="fas fa-check text-eduYellow text-3xl mt-1"></i> 
+                                <p class="tv-text m-0">Osobní a individuální přístup k žákům.</p>
+                            </li>
+                            <li class="flex items-start gap-4">
+                                <i class="fas fa-check text-eduYellow text-3xl mt-1"></i> 
+                                <p class="tv-text m-0">Tady se všichni navzájem opravdu známe.</p>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="text-left reveal-up delay-200 bg-white/5 p-8 rounded-3xl border border-white/10">
+                        <i class="fas fa-comments text-6xl text-eduOrange mb-6"></i>
+                        <h3 class="tv-subtitle mb-6 text-yellow">Transparentnost</h3>
+                        <ul class="space-y-4">
+                            <li class="flex items-start gap-4">
+                                <i class="fas fa-check text-eduYellow text-3xl mt-1"></i> 
+                                <p class="tv-text m-0">Otevřená a férová komunikace beze zdí.</p>
+                            </li>
+                            <li class="flex items-start gap-4">
+                                <i class="fas fa-check text-eduYellow text-3xl mt-1"></i> 
+                                <p class="tv-text m-0">Aktivní spolupráce mezi školou a rodiči.</p>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 7: Jazyky a Certifikáty -->
+        <section class="slide" id="slide-7">
+            <div class="content-wrapper flex flex-col lg:flex-row items-center gap-10 pl-8">
+                <div class="w-full lg:w-7/12 reveal-up">
+                    <h2 class="tv-title mb-6">Jazyky na <br><span class="text-yellow">špičkové úrovni.</span></h2>
+                    
+                    <ul class="space-y-4 mb-8">
+                        <li class="flex items-start gap-4">
+                            <i class="fas fa-certificate text-eduTeal text-4xl mt-1"></i>
+                            <p class="tv-text m-0">Možnost zisku mezinárodních certifikátů.</p>
+                        </li>
+                        <li class="flex items-start gap-4">
+                            <i class="fas fa-user-graduate text-eduOrange text-4xl mt-1"></i>
+                            <p class="tv-text m-0">Příprava na zkoušky běží v rámci běžné výuky.</p>
+                        </li>
+                    </ul>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 reveal-scale delay-200">
+                        <div class="flex flex-col items-center justify-center gap-2 bg-white/5 p-4 rounded-3xl border border-white/10 shadow-sm">
+                            <span class="text-5xl">🇬🇧</span> <span class="tv-text font-bold text-center m-0">Angličtina</span>
+                        </div>
+                        <div class="flex flex-col items-center justify-center gap-2 bg-white/5 p-4 rounded-3xl border border-white/10 shadow-sm">
+                            <span class="text-5xl">🇪🇸</span> <span class="tv-text font-bold text-center m-0">Španělština</span>
+                        </div>
+                        <div class="flex flex-col items-center justify-center gap-2 bg-white/5 p-4 rounded-3xl border border-white/10 shadow-sm">
+                            <span class="text-5xl">🇩🇪</span> <span class="tv-text font-bold text-center m-0">Němečtina</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="w-full lg:w-5/12 flex justify-center reveal-scale delay-200">
+                    <i class="fas fa-language text-[12rem] md:text-[16rem] text-eduYellow opacity-90"></i>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 8: Cestování a Lyžák -->
+        <section class="slide" id="slide-8">
+            <div class="content-wrapper text-center relative pl-8 pr-8">
+                <h2 class="tv-title mb-10 reveal-up">Zážitky <span class="text-orange">mimo lavice.</span></h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto reveal-up delay-100">
+                    <div class="bg-gradient-to-b from-eduTeal/30 to-transparent p-6 rounded-3xl border border-eduTeal/30 flex flex-col items-center text-center mt-0 lg:mt-8 hover:-translate-y-2 transition-transform shadow-lg">
+                        <i class="fas fa-bus text-eduTeal text-5xl mb-4"></i>
+                        <h3 class="tv-subtitle text-2xl mb-2 text-white font-bold leading-tight">Česko a Slovensko</h3>
+                        <p class="tv-text text-base m-0 text-gray-300">Pravidelné exkurze</p>
+                    </div>
+                    <div class="bg-gradient-to-b from-eduYellow/30 to-transparent p-6 rounded-3xl border border-eduYellow/30 flex flex-col items-center text-center mt-0 lg:-mt-4 hover:-translate-y-2 transition-transform shadow-lg">
+                        <i class="fas fa-map-marked-alt text-eduYellow text-5xl mb-4"></i>
+                        <h3 class="tv-subtitle text-2xl mb-2 text-white font-bold leading-tight">Zahraniční poznávání</h3>
+                        <p class="tv-text text-base m-0 text-gray-300">Polsko a Rakousko</p>
+                    </div>
+                    <div class="bg-gradient-to-b from-eduOrange/30 to-transparent p-6 rounded-3xl border border-eduOrange/30 flex flex-col items-center text-center mt-0 lg:mt-6 hover:-translate-y-2 transition-transform shadow-lg">
+                        <i class="fas fa-plane text-eduOrange text-5xl mb-4"></i>
+                        <h3 class="tv-subtitle text-2xl mb-2 text-white font-bold leading-tight">Atraktivní cesty</h3>
+                        <p class="tv-text text-base m-0 text-gray-300">Plánujeme Španělsko</p>
+                    </div>
+                    <div class="bg-gradient-to-b from-white/20 to-transparent p-6 rounded-3xl border border-white/20 flex flex-col items-center text-center mt-0 lg:-mt-2 hover:-translate-y-2 transition-transform shadow-lg">
+                        <i class="fas fa-snowflake text-white text-5xl mb-4"></i>
+                        <h3 class="tv-subtitle text-2xl mb-2 text-white font-bold leading-tight">Zimní sporty</h3>
+                        <p class="tv-text text-base m-0 text-gray-300">Pravidelný lyžařský kurz</p>
+                    </div>
+                </div>
+                
+                <i class="fas fa-route absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[25rem] text-white opacity-5 -z-10 pointer-events-none"></i>
+            </div>
+        </section>
+
+        <!-- Slide 9: Jídlo / Vždy napřed (Graf zarovnaný doleva nahoru) -->
+        <section class="slide" id="slide-9">
+            <!-- items-start zajišťuje horizontální lícování vrchu textu a vrchu grafu -->
+            <div class="content-wrapper flex flex-col lg:flex-row items-start gap-12 pl-8 pt-10">
+                <div class="w-full lg:w-1/2 reveal-up">
+                    <h2 class="tv-title mb-8">Vždy <span class="text-orange">napřed.</span></h2>
+                    
+                    <ul class="space-y-6 mt-6">
+                        <li class="flex items-start gap-5">
+                            <i class="fas fa-utensils text-eduYellow text-5xl mt-1"></i>
+                            <p class="tv-text m-0">Máme na výběr <strong>až ze 4 jídel</strong> na oběd.</p>
+                        </li>
+                        <li class="flex items-start gap-5">
+                            <i class="fas fa-plus-circle text-eduTeal text-5xl mt-1"></i>
+                            <p class="tv-text m-0">Vždy minimálně o 1 jídlo navíc oproti běžnému standardu jiných škol.</p>
+                        </li>
+                        <li class="flex items-start gap-5">
+                            <i class="fas fa-heart text-eduOrange text-5xl mt-1"></i>
+                            <p class="tv-text m-0">Obrovský výběr, každý den si u nás zaručeně vyberete podle chuti.</p>
+                        </li>
+                    </ul>
+                </div>
+                <!-- justify-start zajišťuje přitažení grafu doleva blíže k textu -->
+                <div class="w-full lg:w-1/2 flex justify-start reveal-scale delay-200">
+                    <div class="chart-container" style="height: 50vh; min-height: 400px; width: 100%;">
+                        <canvas id="foodChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 10: Marketingový Graf Radar -->
+        <section class="slide" id="slide-10">
+            <div class="content-wrapper flex flex-col items-center w-full pl-8 pr-8">
+                <h2 class="tv-title mb-10 reveal-up">Proč zvolit <span class="text-teal">Educanet?</span></h2>
+                
+                <div class="chart-container reveal-scale delay-100" style="height: 55vh; min-height: 450px;">
+                    <canvas id="radarChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 11: Konečný slajd (CTA) -->
+        <section class="slide" id="slide-11">
+            <div class="content-wrapper text-center pl-8 pr-8">
+                <h2 class="tv-title mb-12 reveal-up">Tvoje budoucnost <br><span class="text-yellow">začíná tady.</span></h2>
+                
+                <ul class="space-y-8 mt-6 inline-block text-left reveal-up delay-100 bg-white/5 p-10 rounded-3xl border border-white/10 shadow-[0_0_30px_rgba(255,255,255,0.05)]">
+                    <li class="flex items-center gap-6">
+                        <div class="w-14 flex justify-center"><i class="fas fa-door-open text-eduYellow text-5xl"></i></div>
+                        <p class="tv-text font-bold m-0">Přijďte na Den otevřených dveří</p>
+                    </li>
+                    <li class="flex items-center gap-6">
+                        <div class="w-14 flex justify-center"><i class="fas fa-file-signature text-eduOrange text-5xl"></i></div>
+                        <p class="tv-text font-bold m-0">Podejte si přihlášku ještě dnes</p>
+                    </li>
+                    <li class="flex items-center gap-6">
+                        <div class="w-14 flex justify-center"><i class="fas fa-globe text-eduTeal text-5xl"></i></div>
+                        <p class="tv-text font-bold m-0">Více na <span class="text-yellow">www.educanet.cz</span></p>
+                    </li>
+                </ul>
+
+                <div class="mt-14 reveal-scale delay-300">
+                     <p class="text-3xl text-gray-400 font-bold tracking-widest uppercase m-0">Těšíme se na vás!</p>
+                </div>
+            </div>
+        </section>
+
+    </div>
+
+    <script>
+        // Celkový počet slajdů
+        const totalSlides = 12;
+        const container = document.getElementById('slidesContainer');
+        const dotsContainer = document.getElementById('navDots');
+        let currentSlide = 0;
+
+        // Vytvoření navigačních teček
+        for (let i = 0; i < totalSlides; i++) {
+            const dot = document.createElement('div');
+            dot.className = 'dot' + (i === 0 ? ' active' : '');
+            dot.onclick = () => scrollToSlide(i);
+            dotsContainer.appendChild(dot);
+        }
+        const dots = document.querySelectorAll('.dot');
+        const slides = document.querySelectorAll('.slide');
+
+        // Funkce pro posouvání
+        function scrollToSlide(index) {
+            if(index >= 0 && index < totalSlides) {
+                document.getElementById(`slide-${index}`).scrollIntoView({ behavior: 'smooth' });
+                currentSlide = index;
+            }
+        }
+
+        function scrollNext() { scrollToSlide(currentSlide + 1); }
+        function scrollPrev() { scrollToSlide(currentSlide - 1); }
+
+        // OVLÁDÁNÍ KLÁVESNICÍ (Šipky)
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+                event.preventDefault();
+                scrollNext();
+            } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+                event.preventDefault();
+                scrollPrev();
+            }
+        });
+
+        // DETEKCE NEČINNOSTI (Skrytí kurzoru a navigace po 3s)
+        let idleTimer;
+        function resetIdleTimer() {
+            document.body.classList.remove('idle');
+            clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => {
+                document.body.classList.add('idle');
+            }, 3000);
+        }
+
+        // Eventy pro zrušení nečinnosti
+        ['mousemove', 'keydown', 'touchstart', 'wheel'].forEach(evt => {
+            window.addEventListener(evt, resetIdleTimer);
+        });
+        // Scroll na kontejneru také ruší nečinnost
+        container.addEventListener('scroll', resetIdleTimer);
+        resetIdleTimer(); // Prvotní spuštění
+
+        // Observer pro aktivaci animací a inicializaci grafů
+        let foodChartInitialized = false;
+        let radarChartInitialized = false;
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('active');
+                    const index = parseInt(entry.target.id.split('-')[1]);
+                    currentSlide = index;
+                    
+                    dots.forEach((dot, i) => {
+                        dot.classList.toggle('active', i === index);
+                    });
+
+                    // Inicializace Food grafu na slidu 9
+                    if (index === 9 && !foodChartInitialized) {
+                        initFoodChart();
+                        foodChartInitialized = true;
+                    }
+
+                    // Inicializace Radar grafu na slidu 10
+                    if (index === 10 && !radarChartInitialized) {
+                        initRadarChart();
+                        radarChartInitialized = true;
+                    }
+                }
+            });
+        }, { root: container, threshold: 0.5 });
+
+        slides.forEach(slide => observer.observe(slide));
+
+        // GRAF 1: Obědy (Sloupcový graf)
+        function initFoodChart() {
+            const ctx = document.getElementById('foodChart').getContext('2d');
+            Chart.defaults.color = '#ffffff';
+            Chart.defaults.font.family = "'Montserrat', sans-serif";
+
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Běžná škola', 'Educanet'],
+                    datasets: [{
+                        label: 'Výběr jídel',
+                        data: [3, 4], 
+                        backgroundColor: ['rgba(255, 255, 255, 0.15)', '#ffc107'],
+                        borderColor: ['#ffffff', '#ffc107'],
+                        borderWidth: 3,
+                        borderRadius: 15,
+                        barPercentage: 0.6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 5,
+                            ticks: {
+                                display: false, // Skrytá čísla
+                                stepSize: 1 // Vynutí přesně 1 jednotku na jednu čáru
+                            },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)', lineWidth: 2 },
+                            border: { display: true, color: 'rgba(255, 255, 255, 0.1)' }
+                        },
+                        x: {
+                            ticks: {
+                                font: { size: 28, weight: 'bold' },
+                                color: '#ffffff',
+                                padding: 20
+                            },
+                            grid: { display: false },
+                            border: { display: false }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { enabled: false } // Vypnuté bubliny
+                    }
+                }
+            });
+        }
+
+        // GRAF 2: Radarové srovnání
+        function initRadarChart() {
+            const ctx = document.getElementById('radarChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: [
+                        'Osobní přístup', 
+                        'BYOD (Vlastní NTB)', 
+                        'Praxe a Soutěže', 
+                        'Cizí jazyky', 
+                        'Moderní Vybavení', 
+                        'Výběr z jídel'
+                    ],
+                    datasets: [{
+                        label: 'Educanet',
+                        data: [95, 100, 95, 90, 90, 100],
+                        backgroundColor: 'rgba(23, 162, 184, 0.4)', // Teal transparentní
+                        borderColor: '#17a2b8',
+                        pointBackgroundColor: '#17a2b8',
+                        pointBorderColor: '#fff',
+                        pointRadius: 6,
+                        borderWidth: 5
+                    }, {
+                        label: 'Běžné státní školy',
+                        data: [40, 20, 50, 60, 50, 60],
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        borderColor: '#ffffff',
+                        pointBackgroundColor: '#fff',
+                        pointRadius: 4,
+                        borderWidth: 3,
+                        borderDash: [10, 10]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false, 
+                    layout: { padding: { top: 40, bottom: 40, left: 20, right: 20 } },
+                    scales: {
+                        r: {
+                            angleLines: { color: 'rgba(255, 255, 255, 0.15)', lineWidth: 2 },
+                            grid: { color: 'rgba(255, 255, 255, 0.15)', lineWidth: 2 },
+                            pointLabels: {
+                                font: { size: 24, weight: 'bold' },
+                                color: '#ffffff',
+                                padding: 20
+                            },
+                            ticks: { display: false, min: 0, max: 100 }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 30,
+                                font: { size: 22, weight: '600' },
+                                color: '#ffffff'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
